@@ -8,79 +8,64 @@ st.set_page_config(page_title="Indian Stock Screener", layout="wide")
 
 st.title("📈 Indian Stock Screener")
 
-# Sidebar for Filters
-st.sidebar.header("Filters & Settings")
+with st.expander("⚙️ Filters & Settings", expanded=True):
+    market = st.selectbox("Market", ["NSE"], help="Select the stock exchange (currently only NSE is supported).")
+    instrument = st.selectbox("Instrument", ["All", "Equity", "Futures", "Options"], help="Filter by Equity (stocks) or derivatives. Example: 'Equity' for normal stocks.")
+    time_frame = st.selectbox("Timeframe", ["Last N days", "Date Range", "Specific Date", "Today", "Yesterday"], help="Select the date range to fetch market data for. Example: 'Last N days' checks recent history.")
 
-market = st.sidebar.selectbox("Market", ["NSE"]) # Only NSE supported for now
+    dates_to_fetch = []
+    today = date.today()
 
-instrument = st.sidebar.selectbox(
-    "Instrument Type", 
-    ["All", "Equity", "Futures", "Options"]
-)
+    if time_frame == "Today":
+        dates_to_fetch = [today]
+    elif time_frame == "Yesterday":
+        # If today is Monday, yesterday is Friday
+        offset = 3 if today.weekday() == 0 else (2 if today.weekday() == 6 else 1)
+        dates_to_fetch = [today - timedelta(days=offset)]
+    elif time_frame == "Last N days":
+        n_days = st.number_input("N Days", min_value=1, max_value=30, value=5)
+        # Get last N weekdays
+        d = today
+        while len(dates_to_fetch) < n_days:
+            if d.weekday() < 5: # Monday to Friday
+                dates_to_fetch.append(d)
+            d -= timedelta(days=1)
+    elif time_frame == "Specific Date":
+        selected_date = st.date_input("Select Date", value=today)
+        dates_to_fetch = [selected_date]
+    elif time_frame == "Date Range":
+        date_range = st.date_input("Select Date Range", value=(today - timedelta(days=7), today))
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            # Generate weekdays between start and end
+            current_date = start_date
+            while current_date <= end_date:
+                if current_date.weekday() < 5:
+                    dates_to_fetch.append(current_date)
+                current_date += timedelta(days=1)
 
-time_frame = st.sidebar.selectbox(
-    "Time Frame",
-    ["Today", "Yesterday", "Last N days", "Specific Date", "Date Range"]
-)
+    st.markdown("---")
+    st.subheader("Filters")
+    
+    calc_method = st.selectbox("Base Price", ["Close - Previous Close", "Open - Close", "High - Low"], help="Method to calculate % change. Example: 'Close - Previous Close' measures from yesterday's close to today's close.")
+    pct_cutoff = st.number_input("Min % Change", min_value=0.0, value=4.95, step=0.5, help="Minimum required percentage change. Example: 2.0 for a 2% move.")
+    max_pct_cutoff = st.number_input("Max % Change", min_value=0.0, value=5.0, step=0.5, help="Maximum allowed percentage change. Filters out stocks moving more than this value.")
+    direction_ui = st.radio("Direction", ["Up", "Down"], help="Filter for price increases (Up) or decreases (Down).")
+    is_increase = direction_ui == "Up"
+    
+    min_days_pct = st.slider("Consistency (%)", min_value=0, max_value=100, value=100, step=10, help="Percentage of traded days the stock must meet the Min % Change. Example: 100% means it must meet it every single trading day.")
+    
+    min_liquidity = st.number_input("Min Turnover (₹)", min_value=0, value=0, step=1000000, help="Minimum daily trading turnover required. Example: 1000000 = 10 lakhs.")
+    
+    st.markdown("---")
+    st.subheader("Sort & Display")
+    
+    sort_by = st.selectbox("Sort By", ["% Change", "Volume", "Turnover"], help="Metric to sort the final results by.")
+    top_n = st.number_input("Top N Results", min_value=0, value=0, help="Number of results to display. Use 0 to show all matches.")
+    
+    run_screener = st.button("Run Screener", type="primary")
 
-dates_to_fetch = []
-today = date.today()
-
-if time_frame == "Today":
-    dates_to_fetch = [today]
-elif time_frame == "Yesterday":
-    # If today is Monday, yesterday is Friday
-    offset = 3 if today.weekday() == 0 else (2 if today.weekday() == 6 else 1)
-    dates_to_fetch = [today - timedelta(days=offset)]
-elif time_frame == "Last N days":
-    n_days = st.sidebar.number_input("N Days", min_value=1, max_value=30, value=5)
-    # Get last N weekdays
-    d = today
-    while len(dates_to_fetch) < n_days:
-        if d.weekday() < 5: # Monday to Friday
-            dates_to_fetch.append(d)
-        d -= timedelta(days=1)
-elif time_frame == "Specific Date":
-    selected_date = st.sidebar.date_input("Select Date", value=today)
-    dates_to_fetch = [selected_date]
-elif time_frame == "Date Range":
-    date_range = st.sidebar.date_input("Select Date Range", value=(today - timedelta(days=7), today))
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        # Generate weekdays between start and end
-        current_date = start_date
-        while current_date <= end_date:
-            if current_date.weekday() < 5:
-                dates_to_fetch.append(current_date)
-            current_date += timedelta(days=1)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Filter Conditions")
-
-calc_method = st.sidebar.selectbox(
-    "Calculation Method",
-    ["Close - Previous Close", "Open - Close", "High - Low"]
-)
-
-pct_cutoff = st.sidebar.number_input("% Cutoff", min_value=0.0, value=2.0, step=0.5)
-direction = st.sidebar.radio("Direction", ["Increase", "Decrease"])
-is_increase = direction == "Increase"
-
-min_days_pct = st.sidebar.slider("Condition met for at least X% of days", min_value=0, max_value=100, value=100, step=10)
-
-min_liquidity = st.sidebar.number_input("Minimum Liquidity (Turnover in Rs)", min_value=0, value=10000000, step=1000000, help="E.g. 10000000 = 1 Crore")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Sorting & Display")
-
-sort_by = st.sidebar.selectbox(
-    "Sort By",
-    ["% Change (Latest Date)", "Volume", "Liquidity (Turnover)"]
-)
-
-top_n = st.sidebar.number_input("Display Top N Results (0 for all)", min_value=0, value=20)
-
-if st.sidebar.button("Run Screener", type="primary"):
+if run_screener:
     if not dates_to_fetch:
         st.error("Please select a valid date range.")
     else:
@@ -100,6 +85,7 @@ if st.sidebar.button("Run Screener", type="primary"):
                     instrument=instrument,
                     min_liquidity=min_liquidity,
                     pct_cutoff=pct_cutoff,
+                    max_pct_cutoff=max_pct_cutoff,
                     is_increase=is_increase,
                     min_days_pct=min_days_pct
                 )
@@ -115,6 +101,20 @@ if st.sidebar.button("Run Screener", type="primary"):
                     st.info("No stocks matched your criteria.")
                 else:
                     st.success(f"Found {len(final_df)} matching stocks.")
+                    
+                    # Extract dates for summary
+                    evaluated_dates = df['DATE'].dt.strftime('%Y-%m-%d').unique().tolist()
+                    evaluated_dates.sort()
+                    requested_dates = [d.strftime('%Y-%m-%d') for d in dates_to_fetch]
+                    skipped_dates = list(set(requested_dates) - set(evaluated_dates))
+                    
+                    with st.expander("📊 Scan Summary", expanded=True):
+                        st.markdown(f"**Dates Requested:** {len(requested_dates)} days")
+                        st.markdown(f"**Trading Days Evaluated:** {len(evaluated_dates)} days ({', '.join(evaluated_dates)})")
+                        if skipped_dates:
+                            st.markdown(f"**Skipped (Holidays/No Data):** {len(skipped_dates)} days ({', '.join(skipped_dates)})")
+                        st.markdown(f"**Filter:** {direction_ui} {pct_cutoff}% to {max_pct_cutoff}% | Consistency: {min_days_pct}% | Turnover >= ₹{min_liquidity/10000000}Cr")
+                        st.markdown(f"**Sorted By:** {sort_by} (Top {'All' if top_n == 0 else top_n})")
                     
                     # Format output for better display
                     display_df = final_df.copy()

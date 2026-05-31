@@ -47,6 +47,7 @@ def apply_filters(df: pd.DataFrame,
                   instrument: str, 
                   min_liquidity: float,
                   pct_cutoff: float,
+                  max_pct_cutoff: float,
                   is_increase: bool,
                   min_days_pct: float) -> pd.DataFrame:
     """
@@ -61,9 +62,9 @@ def apply_filters(df: pd.DataFrame,
 
     # 2. Calculate % change condition
     if is_increase:
-        df['CONDITION_MET'] = df['PCT_CHANGE'] >= pct_cutoff
+        df['CONDITION_MET'] = (df['PCT_CHANGE'] >= pct_cutoff) & (df['PCT_CHANGE'] <= max_pct_cutoff)
     else:
-        df['CONDITION_MET'] = df['PCT_CHANGE'] <= -pct_cutoff
+        df['CONDITION_MET'] = (df['PCT_CHANGE'] <= -pct_cutoff) & (df['PCT_CHANGE'] >= -max_pct_cutoff)
 
     # 3. Apply Liquidity condition
     if min_liquidity > 0:
@@ -93,11 +94,11 @@ def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int) -> pd.D
     latest_df = df.loc[idx].copy()
     
     # Sort
-    if sort_by == "% Change (Latest Date)":
+    if sort_by == "% Change":
         latest_df = latest_df.sort_values(by='PCT_CHANGE', ascending=False)
     elif sort_by == "Volume":
         latest_df = latest_df.sort_values(by='VOLUME', ascending=False)
-    elif sort_by == "Liquidity (Turnover)":
+    elif sort_by == "Turnover":
         latest_df = latest_df.sort_values(by='TURNOVER', ascending=False)
     else:
         # Default fallback

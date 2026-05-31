@@ -24,14 +24,15 @@ def test_screener():
         df=df,
         instrument="Equity",
         min_liquidity=10000000,
-        pct_cutoff=2.0,
+        pct_cutoff=5.0,
+        max_pct_cutoff=100.0,
         is_increase=True,
         min_days_pct=100
     )
     
     print(f"Filtered {len(filtered_df)} rows.")
     
-    final_df = get_latest_data_and_sort(filtered_df, "% Change (Latest Date)", 5)
+    final_df = get_latest_data_and_sort(filtered_df, "% Change", 5)
     print("Top 5 results:")
     print(final_df[['SYMBOL', 'PCT_CHANGE', 'TURNOVER']])
 
