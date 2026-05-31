@@ -9,7 +9,7 @@ st.set_page_config(page_title="Indian Stock Screener", layout="wide")
 st.title("📈 Indian Stock Screener")
 
 with st.expander("⚙️ Filters & Settings", expanded=True):
-    market = st.selectbox("Market", ["NSE"], help="Select the stock exchange (currently only NSE is supported).")
+    market = st.selectbox("Market", ["Both", "NSE", "BSE"], help="Select the stock exchange(s) to scan.")
     instrument = st.selectbox("Instrument", ["All", "Equity", "Futures", "Options"], help="Filter by Equity (stocks) or derivatives. Example: 'Equity' for normal stocks.")
     time_frame = st.selectbox("Timeframe", ["Last N days", "Date Range", "Specific Date", "Today", "Yesterday"], help="Select the date range to fetch market data for. Example: 'Last N days' checks recent history.")
 
@@ -71,7 +71,7 @@ if run_screener:
     else:
         with st.spinner("Fetching data and applying filters... This may take a moment if downloading fresh data."):
             # 1. Fetch Data
-            df = fetch_data_for_dates(dates_to_fetch)
+            df = fetch_data_for_dates(dates_to_fetch, market=market)
             
             if df.empty:
                 st.warning("No data found for the selected dates. Please try different dates (weekends/holidays have no data).")

@@ -11,7 +11,7 @@ def test_screener():
         
     dates = [d]
     print(f"Fetching data for {dates}")
-    df = fetch_data_for_dates(dates)
+    df = fetch_data_for_dates(dates, market="Both")
     if df.empty:
         print("DataFrame is empty, skipping further tests.")
         return
