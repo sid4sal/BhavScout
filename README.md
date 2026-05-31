@@ -1,0 +1,2 @@
+# BhavScout
+Basic Stock Screener
