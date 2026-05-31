@@ -71,8 +71,9 @@ def apply_filters(df: pd.DataFrame,
         df['CONDITION_MET'] = df['CONDITION_MET'] & (df['TURNOVER'] >= min_liquidity)
 
     # 4. Aggregation for "% of days" rule
-    # We want to find symbols that meet the condition for at least `min_days_pct` of the days they traded in this period.
-    total_days = df.groupby('SYMBOL')['DATE'].transform('count')
+    # We want to find symbols that meet the condition for at least `min_days_pct` of the TOTAL evaluated days.
+    # If an illiquid stock didn't trade on some days, those missing days count as non-passing days.
+    total_days = df['DATE'].nunique()
     met_days = df.groupby('SYMBOL')['CONDITION_MET'].transform('sum')
     
     df['MET_PCT'] = (met_days / total_days) * 100
