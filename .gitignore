@@ -1,0 +1,16 @@
+# Virtual Environments
+venv/
+env/
+.env
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Data Cache
+cache/
+*.csv
+*.zip
+
+# Streamlit
+.streamlit/
