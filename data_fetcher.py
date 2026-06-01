@@ -12,13 +12,21 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+def get_headers():
+    return {'User-Agent': 'Mozilla/5.0'}
+
+def extract_zip(resp_content, filename):
+    with zipfile.ZipFile(io.BytesIO(resp_content)) as zf:
+        csv_filename = zf.namelist()[0]
+        with zf.open(csv_filename) as f:
+            with open(filename, 'wb') as out_f:
+                out_f.write(f.read())
+
 def download_nse_bhavcopy(dt: date) -> str:
     fmt = '%Y%m%d'
     date_str = dt.strftime(fmt)
     filename = os.path.join(CACHE_DIR, f"nse_cm_{date_str}.csv")
-    
-    if os.path.exists(filename):
-        return filename
+    if os.path.exists(filename): return filename
 
     is_legacy = dt < date(2024, 7, 8)
     if is_legacy:
@@ -29,31 +37,20 @@ def download_nse_bhavcopy(dt: date) -> str:
     else:
         url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
 
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
     try:
-        resp = requests.get(url, headers=headers)
+        resp = requests.get(url, headers=get_headers())
         if resp.status_code == 200 and resp.content[:2] == b'PK':
-            with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-                csv_filename = zf.namelist()[0]
-                with zf.open(csv_filename) as f:
-                    with open(filename, 'wb') as out_f:
-                        out_f.write(f.read())
+            extract_zip(resp.content, filename)
             return filename
-        else:
-            logger.warning(f"Could not download NSE CM bhavcopy for {dt}: HTTP {resp.status_code}")
-            return None
     except Exception as e:
         logger.warning(f"Could not download NSE CM bhavcopy for {dt}: {e}")
-        return None
+    return None
 
 def download_nse_fo_bhavcopy(dt: date) -> str:
     fmt = '%Y%m%d'
     date_str = dt.strftime(fmt)
     filename = os.path.join(CACHE_DIR, f"nse_fo_{date_str}.csv")
-    
-    if os.path.exists(filename):
-        return filename
+    if os.path.exists(filename): return filename
 
     is_legacy = dt < date(2024, 7, 8)
     if is_legacy:
@@ -64,162 +61,228 @@ def download_nse_fo_bhavcopy(dt: date) -> str:
     else:
         url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
 
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
     try:
-        resp = requests.get(url, headers=headers)
+        resp = requests.get(url, headers=get_headers())
         if resp.status_code == 200 and resp.content[:2] == b'PK':
-            with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-                csv_filename = zf.namelist()[0]
-                with zf.open(csv_filename) as f:
-                    with open(filename, 'wb') as out_f:
-                        out_f.write(f.read())
+            extract_zip(resp.content, filename)
             return filename
-        else:
-            logger.warning(f"Could not download NSE FO bhavcopy for {dt}: HTTP {resp.status_code}")
-            return None
     except Exception as e:
         logger.warning(f"Could not download NSE FO bhavcopy for {dt}: {e}")
-        return None
+    return None
 
-def download_bse_bhavcopy(dt: date) -> str:
-    fmt = '%Y%m%d'
-    date_str = dt.strftime(fmt)
-    filename = os.path.join(CACHE_DIR, f"bse_eq_{date_str}.csv")
+def download_nse_indices(dt: date) -> str:
+    ddmmyyyy = dt.strftime('%d%m%Y')
+    filename = os.path.join(CACHE_DIR, f"nse_idx_{ddmmyyyy}.csv")
+    if os.path.exists(filename): return filename
     
-    if os.path.exists(filename):
-        return filename
-        
-    url = f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date_str}_F_0000.CSV"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
+    url = f"https://nsearchives.nseindia.com/content/indices/ind_close_all_{ddmmyyyy}.csv"
     try:
-        resp = requests.get(url, headers=headers)
-        if resp.status_code == 200 and resp.headers.get('Content-Type', '') == 'application/octet-stream':
+        resp = requests.get(url, headers=get_headers())
+        if resp.status_code == 200:
             with open(filename, 'wb') as f:
                 f.write(resp.content)
             return filename
-        else:
-            logger.warning(f"Could not download BSE bhavcopy for {dt}: HTTP {resp.status_code}")
-            return None
+    except Exception as e:
+        logger.warning(f"Could not download NSE Indices for {dt}: {e}")
+    return None
+
+def download_bse_indices(dt: date) -> str:
+    ddmmyyyy = dt.strftime('%d%m%Y')
+    filename = os.path.join(CACHE_DIR, f"bse_idx_{ddmmyyyy}.csv")
+    if os.path.exists(filename): return filename
+    
+    url = f"https://www.bseindia.com/bsedata/Index_Bhavcopy/INDEXSummary_{ddmmyyyy}.csv"
+    try:
+        resp = requests.get(url, headers=get_headers())
+        if resp.status_code == 200:
+            with open(filename, 'wb') as f:
+                f.write(resp.content)
+            return filename
+    except Exception as e:
+        logger.warning(f"Could not download BSE Indices for {dt}: {e}")
+    return None
+
+def download_bse_bhavcopy(dt: date) -> str:
+    date_str = dt.strftime('%Y%m%d')
+    filename = os.path.join(CACHE_DIR, f"bse_eq_{date_str}.csv")
+    if os.path.exists(filename): return filename
+        
+    url = f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date_str}_F_0000.CSV"
+    try:
+        resp = requests.get(url, headers=get_headers())
+        if resp.status_code == 200:
+            with open(filename, 'wb') as f:
+                f.write(resp.content)
+            return filename
     except Exception as e:
         logger.warning(f"Could not download BSE bhavcopy for {dt}: {e}")
-        return None
+    return None
 
-def fetch_data_for_dates(dates: list[date], market: str = "NSE") -> pd.DataFrame:
+def download_bse_fo_bhavcopy(dt: date) -> str:
+    date_str = dt.strftime('%Y%m%d')
+    filename = os.path.join(CACHE_DIR, f"bse_fo_{date_str}.csv")
+    if os.path.exists(filename): return filename
+    
+    url = f"https://www.bseindia.com/download/BhavCopy/Derivative/BhavCopy_BSE_FO_0_0_0_{date_str}_F_0000.CSV"
+    try:
+        resp = requests.get(url, headers=get_headers())
+        if resp.status_code == 200:
+            with open(filename, 'wb') as f:
+                f.write(resp.content)
+            return filename
+    except Exception as e:
+        logger.warning(f"Could not download BSE FO bhavcopy for {dt}: {e}")
+    return None
+
+def classify_equity(symbol):
+    sym = str(symbol).upper()
+    if 'BEES' in sym or 'ETF' in sym:
+        return 'ETF'
+    return 'Equity'
+
+def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.DataFrame:
     all_data = []
     
     for dt in dates:
-        if market in ["NSE", "Both"]:
-            # Download NSE Equity
+        if "NSE" in markets:
+            # 1. NSE Equity
             eq_file = download_nse_bhavcopy(dt)
             if eq_file and os.path.exists(eq_file):
                 try:
                     df_eq = pd.read_csv(eq_file)
                     df_eq.columns = df_eq.columns.str.strip()
-                    
                     if 'TckrSymb' in df_eq.columns:
-                        # New ISO 20022 Format
                         df_eq['SERIES'] = df_eq['SctySrs'].str.strip()
                         df_eq['SYMBOL'] = df_eq['TckrSymb'].str.strip()
                         df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE'])]
-                        df_eq['INSTRUMENT_TYPE'] = 'Equity'
+                        df_eq['INSTRUMENT_TYPE'] = df_eq['SYMBOL'].apply(classify_equity)
                         df_eq['DATE'] = pd.to_datetime(df_eq['TradDt'])
-                        df_eq = df_eq.rename(columns={
-                            'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE',
-                            'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'
-                        })
+                        df_eq = df_eq.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
                     else:
-                        # Legacy Format
                         df_eq['SERIES'] = df_eq['SERIES'].str.strip()
                         df_eq['SYMBOL'] = df_eq['SYMBOL'].str.strip()
                         df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE'])]
-                        df_eq['INSTRUMENT_TYPE'] = 'Equity'
+                        df_eq['INSTRUMENT_TYPE'] = df_eq['SYMBOL'].apply(classify_equity)
                         df_eq['DATE'] = pd.to_datetime(df_eq['TIMESTAMP'] if 'TIMESTAMP' in df_eq.columns else (df_eq['DATE1'] if 'DATE1' in df_eq.columns else dt))
-                        df_eq = df_eq.rename(columns={
-                            'OPEN_PRICE': 'OPEN', 'HIGH_PRICE': 'HIGH', 'LOW_PRICE': 'LOW', 'CLOSE_PRICE': 'CLOSE',
-                            'PREV_CLOSE': 'PREVCLOSE', 'TOTTRDQTY': 'VOLUME', 'TTL_TRD_QNTY': 'VOLUME', 'TOTTRDVAL': 'TURNOVER', 'TURNOVER_LACS': 'TURNOVER'
-                        })
+                        df_eq = df_eq.rename(columns={'OPEN_PRICE': 'OPEN', 'HIGH_PRICE': 'HIGH', 'LOW_PRICE': 'LOW', 'CLOSE_PRICE': 'CLOSE', 'PREV_CLOSE': 'PREVCLOSE', 'TOTTRDQTY': 'VOLUME', 'TTL_TRD_QNTY': 'VOLUME', 'TOTTRDVAL': 'TURNOVER', 'TURNOVER_LACS': 'TURNOVER'})
                         if 'TURNOVER' in df_eq.columns and df_eq['TURNOVER'].mean() < 1e7:
                             df_eq['TURNOVER'] = df_eq['TURNOVER'] * 100000
-                    
                     df_eq['SYMBOL'] = df_eq['SYMBOL'] + ' (NSE)'
                     df_eq = df_eq[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_eq)
                 except Exception as e:
-                    logger.error(f"Error reading NSE eq file {eq_file}: {e}")
+                    logger.error(f"Error parsing NSE eq file {eq_file}: {e}")
 
-            # Download NSE FO
+            # 2. NSE FO
             fo_file = download_nse_fo_bhavcopy(dt)
             if fo_file and os.path.exists(fo_file):
                 try:
                     df_fo = pd.read_csv(fo_file)
                     df_fo.columns = df_fo.columns.str.strip()
-                    
                     if 'FinInstrmTp' in df_fo.columns:
-                        # New ISO 20022 Format
-                        def get_inst_type_iso(inst):
-                            if inst in ['STF', 'IDF']: return 'Futures'
-                            if inst in ['STO', 'IDO']: return 'Options'
-                            return 'Other'
-                        df_fo['INSTRUMENT_TYPE'] = df_fo['FinInstrmTp'].apply(get_inst_type_iso)
+                        df_fo['INSTRUMENT_TYPE'] = df_fo['FinInstrmTp'].apply(lambda x: 'Futures' if x in ['STF','IDF'] else ('Options' if x in ['STO','IDO'] else 'Other'))
                         df_fo['SYMBOL'] = df_fo['TckrSymb'].astype(str) + '_' + df_fo['FinInstrmTp'].astype(str) + '_' + df_fo['XpryDt'].astype(str)
                         df_fo['DATE'] = pd.to_datetime(df_fo['TradDt'])
-                        df_fo = df_fo.rename(columns={
-                            'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE',
-                            'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'
-                        })
+                        df_fo = df_fo.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
                     else:
-                        # Legacy FO format
-                        if 'TIMESTAMP' in df_fo.columns:
-                            df_fo['DATE'] = pd.to_datetime(df_fo['TIMESTAMP'])
-                        else:
-                            df_fo['DATE'] = pd.to_datetime(dt)
-                            
-                        def get_inst_type_legacy(inst):
-                            if str(inst).startswith('FUT'): return 'Futures'
-                            if str(inst).startswith('OPT'): return 'Options'
-                            return 'Other'
-                        
-                        df_fo['INSTRUMENT_TYPE'] = df_fo['INSTRUMENT'].apply(get_inst_type_legacy)
-                        df_fo['SYMBOL'] = df_fo['SYMBOL'] + '_' + df_fo['INSTRUMENT'] + '_' + df_fo['EXPIRY_DT']
-                        
-                        if 'PREVCLOSE' not in df_fo.columns:
-                            df_fo['PREVCLOSE'] = float('nan') 
-                        
-                        df_fo = df_fo.rename(columns={
-                            'CONTRACTS': 'VOLUME',
-                            'VAL_INLAKH': 'TURNOVER'
-                        })
+                        df_fo['DATE'] = pd.to_datetime(df_fo['TIMESTAMP'] if 'TIMESTAMP' in df_fo.columns else dt)
+                        df_fo['INSTRUMENT_TYPE'] = df_fo['INSTRUMENT'].apply(lambda x: 'Futures' if str(x).startswith('FUT') else ('Options' if str(x).startswith('OPT') else 'Other'))
+                        df_fo['SYMBOL'] = df_fo['SYMBOL'].astype(str) + '_' + df_fo['INSTRUMENT'].astype(str) + '_' + df_fo['EXPIRY_DT'].astype(str)
+                        df_fo['PREVCLOSE'] = float('nan') 
+                        df_fo = df_fo.rename(columns={'CONTRACTS': 'VOLUME', 'VAL_INLAKH': 'TURNOVER'})
                         if 'TURNOVER' in df_fo.columns:
                             df_fo['TURNOVER'] = df_fo['TURNOVER'] * 100000
-
                     df_fo['SYMBOL'] = df_fo['SYMBOL'] + ' (NSE)'
                     df_fo = df_fo[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_fo)
                 except Exception as e:
-                    logger.error(f"Error reading NSE fo file {fo_file}: {e}")
+                    logger.error(f"Error parsing NSE fo file {fo_file}: {e}")
+                    
+            # 3. NSE Indices
+            idx_file = download_nse_indices(dt)
+            if idx_file and os.path.exists(idx_file):
+                try:
+                    df_idx = pd.read_csv(idx_file)
+                    df_idx.columns = df_idx.columns.str.strip()
+                    df_idx['INSTRUMENT_TYPE'] = 'Index'
+                    df_idx = df_idx.rename(columns={
+                        'Index Name': 'SYMBOL', 'Index Date': 'DATE',
+                        'Open Index Value': 'OPEN', 'High Index Value': 'HIGH', 
+                        'Low Index Value': 'LOW', 'Closing Index Value': 'CLOSE',
+                        'Volume': 'VOLUME', 'Turnover (Rs. Cr.)': 'TURNOVER'
+                    })
+                    if 'TURNOVER' in df_idx.columns:
+                        # Turnover is in Rs. Cr., convert to absolute (1 Cr = 10,000,000)
+                        df_idx['TURNOVER'] = pd.to_numeric(df_idx['TURNOVER'], errors='coerce') * 10000000
+                    
+                    df_idx['DATE'] = pd.to_datetime(df_idx['DATE'], format='%d-%m-%Y', errors='coerce')
+                    # Calculate PREVCLOSE using Points Change
+                    if 'Points Change' in df_idx.columns:
+                        df_idx['PREVCLOSE'] = pd.to_numeric(df_idx['CLOSE'], errors='coerce') - pd.to_numeric(df_idx['Points Change'], errors='coerce')
+                    else:
+                        df_idx['PREVCLOSE'] = float('nan')
+                    
+                    df_idx['SYMBOL'] = df_idx['SYMBOL'] + ' (NSE)'
+                    df_idx = df_idx[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    all_data.append(df_idx)
+                except Exception as e:
+                    logger.error(f"Error parsing NSE index file {idx_file}: {e}")
 
-        if market in ["BSE", "Both"]:
+        if "BSE" in markets:
+            # 4. BSE Equity
             bse_file = download_bse_bhavcopy(dt)
             if bse_file and os.path.exists(bse_file):
                 try:
                     df_bse = pd.read_csv(bse_file)
                     df_bse.columns = df_bse.columns.str.strip()
-                    
                     if 'TckrSymb' in df_bse.columns:
                         df_bse['SERIES'] = df_bse['SctySrs'].str.strip()
-                        df_bse['SYMBOL'] = df_bse['TckrSymb'].str.strip() + ' (BSE)'
-                        df_bse['INSTRUMENT_TYPE'] = 'Equity'
+                        df_bse['SYMBOL'] = df_bse['TckrSymb'].str.strip()
+                        df_bse['INSTRUMENT_TYPE'] = df_bse['SYMBOL'].apply(classify_equity)
                         df_bse['DATE'] = pd.to_datetime(df_bse['TradDt'])
-                        df_bse = df_bse.rename(columns={
-                            'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE',
-                            'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'
-                        })
+                        df_bse = df_bse.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
+                        df_bse['SYMBOL'] = df_bse['SYMBOL'] + ' (BSE)'
                         df_bse = df_bse[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                         all_data.append(df_bse)
                 except Exception as e:
-                    logger.error(f"Error reading BSE file {bse_file}: {e}")
+                    logger.error(f"Error parsing BSE eq file {bse_file}: {e}")
+                    
+            # 5. BSE FO
+            bse_fo_file = download_bse_fo_bhavcopy(dt)
+            if bse_fo_file and os.path.exists(bse_fo_file):
+                try:
+                    df_bse_fo = pd.read_csv(bse_fo_file)
+                    df_bse_fo.columns = df_bse_fo.columns.str.strip()
+                    if 'FinInstrmTp' in df_bse_fo.columns:
+                        df_bse_fo['INSTRUMENT_TYPE'] = df_bse_fo['FinInstrmTp'].apply(lambda x: 'Futures' if x in ['STF','IDF'] else ('Options' if x in ['STO','IDO'] else 'Other'))
+                        df_bse_fo['SYMBOL'] = df_bse_fo['TckrSymb'].astype(str) + '_' + df_bse_fo['FinInstrmTp'].astype(str) + '_' + df_bse_fo['XpryDt'].astype(str)
+                        df_bse_fo['DATE'] = pd.to_datetime(df_bse_fo['TradDt'])
+                        df_bse_fo = df_bse_fo.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
+                        df_bse_fo['SYMBOL'] = df_bse_fo['SYMBOL'] + ' (BSE)'
+                        df_bse_fo = df_bse_fo[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                        all_data.append(df_bse_fo)
+                except Exception as e:
+                    logger.error(f"Error parsing BSE fo file {bse_fo_file}: {e}")
+
+            # 6. BSE Indices
+            bse_idx_file = download_bse_indices(dt)
+            if bse_idx_file and os.path.exists(bse_idx_file):
+                try:
+                    df_bse_idx = pd.read_csv(bse_idx_file)
+                    df_bse_idx.columns = df_bse_idx.columns.str.strip()
+                    df_bse_idx['INSTRUMENT_TYPE'] = 'Index'
+                    df_bse_idx['DATE'] = pd.to_datetime(dt)
+                    df_bse_idx = df_bse_idx.rename(columns={
+                        'IndexName': 'SYMBOL', 'OpenPrice': 'OPEN', 'HighPrice': 'HIGH',
+                        'LowPrice': 'LOW', 'ClosePrice': 'CLOSE', 'PreviousClose': 'PREVCLOSE'
+                    })
+                    df_bse_idx['VOLUME'] = 0.0
+                    df_bse_idx['TURNOVER'] = 0.0
+                    df_bse_idx['SYMBOL'] = df_bse_idx['SYMBOL'] + ' (BSE)'
+                    df_bse_idx = df_bse_idx[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    all_data.append(df_bse_idx)
+                except Exception as e:
+                    logger.error(f"Error parsing BSE index file {bse_idx_file}: {e}")
 
     if not all_data:
         return pd.DataFrame()

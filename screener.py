@@ -44,7 +44,7 @@ def calculate_percentage_change(df: pd.DataFrame, method: str) -> pd.DataFrame:
     return df
 
 def apply_filters(df: pd.DataFrame, 
-                  instrument: str, 
+                  instruments: list[str], 
                   min_liquidity: float,
                   pct_cutoff: float,
                   max_pct_cutoff: float,
@@ -57,8 +57,8 @@ def apply_filters(df: pd.DataFrame,
         return df
 
     # 1. Filter by Instrument
-    if instrument != "All":
-        df = df[df['INSTRUMENT_TYPE'] == instrument]
+    if "All" not in instruments and len(instruments) > 0:
+        df = df[df['INSTRUMENT_TYPE'].isin(instruments)]
 
     # 2. Calculate % change condition
     if is_increase:

@@ -11,7 +11,7 @@ def test_screener():
         
     dates = [date(2024, 5, 29), date(2026, 5, 29)]
     print(f"Fetching data for {dates}")
-    df = fetch_data_for_dates(dates, market="Both")
+    df = fetch_data_for_dates(dates, markets=["NSE", "BSE"])
     if df.empty:
         print("DataFrame is empty, skipping further tests.")
         return
@@ -22,12 +22,12 @@ def test_screener():
     
     filtered_df = apply_filters(
         df=df,
-        instrument="Equity",
-        min_liquidity=10000000,
-        pct_cutoff=5.0,
+        instruments=["All"],
+        min_liquidity=0,
+        pct_cutoff=0.0,
         max_pct_cutoff=100.0,
         is_increase=True,
-        min_days_pct=100
+        min_days_pct=0
     )
     
     print(f"Filtered {len(filtered_df)} rows.")

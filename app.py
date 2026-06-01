@@ -9,8 +9,8 @@ st.set_page_config(page_title="Indian Stock Screener", layout="wide")
 st.title("📈 Indian Stock Screener")
 
 with st.expander("⚙️ Filters & Settings", expanded=True):
-    market = st.selectbox("Market", ["Both", "NSE", "BSE"], help="Select the stock exchange(s) to scan.")
-    instrument = st.selectbox("Instrument", ["All", "Equity", "Futures", "Options"], help="Filter by Equity (stocks) or derivatives. Example: 'Equity' for normal stocks.")
+    market = st.multiselect("Market", ["NSE", "BSE"], default=["NSE", "BSE"], help="Select the stock exchange(s) to scan.")
+    instrument = st.multiselect("Instrument", ["All", "Equity", "Futures", "Options", "ETF", "Index"], default=["Equity"], help="Filter by Equity (stocks), derivatives, ETFs, or Indices.")
     time_frame = st.selectbox("Timeframe", ["Last N days", "Date Range", "Specific Date", "Today", "Yesterday"], help="Select the date range to fetch market data for. Example: 'Last N days' checks recent history.")
 
     dates_to_fetch = []
@@ -60,7 +60,7 @@ with st.expander("⚙️ Filters & Settings", expanded=True):
     st.markdown("---")
     st.subheader("Sort & Display")
     
-    sort_by = st.selectbox("Sort By", ["% Change", "Volume", "Turnover"], help="Metric to sort the final results by.")
+    sort_by = st.selectbox("Sort By", ["Turnover", "% Change", "Volume"], help="Metric to sort the final results by.")
     top_n = st.number_input("Top N Results", min_value=0, value=0, help="Number of results to display. Use 0 to show all matches.")
     
     run_screener = st.button("Run Screener", type="primary")
@@ -71,7 +71,7 @@ if run_screener:
     else:
         with st.spinner("Fetching data and applying filters... This may take a moment if downloading fresh data."):
             # 1. Fetch Data
-            df = fetch_data_for_dates(dates_to_fetch, market=market)
+            df = fetch_data_for_dates(dates_to_fetch, markets=market)
             
             if df.empty:
                 st.warning("No data found for the selected dates. Please try different dates (weekends/holidays have no data).")
@@ -82,7 +82,7 @@ if run_screener:
                 # 3. Apply Filters
                 filtered_df = apply_filters(
                     df=df,
-                    instrument=instrument,
+                    instruments=instrument,
                     min_liquidity=min_liquidity,
                     pct_cutoff=pct_cutoff,
                     max_pct_cutoff=max_pct_cutoff,
