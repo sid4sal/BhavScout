@@ -58,7 +58,7 @@ def apply_filters(df: pd.DataFrame,
 
     # 1. Filter by Instrument
     if "All" not in instruments and len(instruments) > 0:
-        df = df[df['INSTRUMENT_TYPE'].isin(instruments)]
+        df = df[df['INSTRUMENT_TYPE'].isin(instruments)].copy()
 
     # 2. Calculate % change condition
     if is_increase:
@@ -83,7 +83,7 @@ def apply_filters(df: pd.DataFrame,
     
     return df
 
-def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int) -> pd.DataFrame:
+def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_increase: bool = True) -> pd.DataFrame:
     """
     Extracts the latest data for each valid symbol and sorts it.
     """
@@ -96,14 +96,14 @@ def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int) -> pd.D
     
     # Sort
     if sort_by == "% Change":
-        latest_df = latest_df.sort_values(by='PCT_CHANGE', ascending=False)
+        latest_df = latest_df.sort_values(by='PCT_CHANGE', ascending=not is_increase)
     elif sort_by == "Volume":
         latest_df = latest_df.sort_values(by='VOLUME', ascending=False)
     elif sort_by == "Turnover":
         latest_df = latest_df.sort_values(by='TURNOVER', ascending=False)
     else:
         # Default fallback
-        latest_df = latest_df.sort_values(by='PCT_CHANGE', ascending=False)
+        latest_df = latest_df.sort_values(by='PCT_CHANGE', ascending=not is_increase)
         
     # Apply Top N
     if top_n > 0:

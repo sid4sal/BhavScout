@@ -94,7 +94,8 @@ if run_screener:
                 final_df = get_latest_data_and_sort(
                     df=filtered_df,
                     sort_by=sort_by,
-                    top_n=top_n
+                    top_n=top_n,
+                    is_increase=is_increase
                 )
                 
                 if final_df.empty:

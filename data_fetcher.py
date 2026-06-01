@@ -140,9 +140,31 @@ def classify_equity(symbol):
         return 'ETF'
     return 'Equity'
 
+def get_previous_trading_day(dt: date, markets: list[str]) -> date:
+    from datetime import timedelta
+    for i in range(1, 8):
+        prev_dt = dt - timedelta(days=i)
+        if prev_dt.weekday() < 5:
+            # Check NSE or BSE CM bhavcopy as a market open indicator
+            if "NSE" in markets and download_nse_bhavcopy(prev_dt):
+                return prev_dt
+            elif "BSE" in markets and download_bse_bhavcopy(prev_dt):
+                return prev_dt
+    return dt - timedelta(days=1)
+
 def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.DataFrame:
     all_data = []
     
+    # 0. Prep extra date for PREVCLOSE calculation (Legacy FO handling)
+    original_dates = set(dates)
+    if dates:
+        min_dt = min(dates)
+        # If legacy NSE F&O could be involved, we need the prev day
+        if min_dt < date(2024, 7, 8) and "NSE" in markets:
+            prev_dt = get_previous_trading_day(min_dt, markets)
+            if prev_dt not in dates:
+                dates = [prev_dt] + dates
+
     for dt in dates:
         if "NSE" in markets:
             # 1. NSE Equity
@@ -214,6 +236,8 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                     if 'TURNOVER' in df_idx.columns:
                         # Turnover is in Rs. Cr., convert to absolute (1 Cr = 10,000,000)
                         df_idx['TURNOVER'] = pd.to_numeric(df_idx['TURNOVER'], errors='coerce') * 10000000
+                    if 'VOLUME' in df_idx.columns:
+                        df_idx['VOLUME'] = pd.to_numeric(df_idx['VOLUME'], errors='coerce').fillna(0)
                     
                     df_idx['DATE'] = pd.to_datetime(df_idx['DATE'], format='%d-%m-%Y', errors='coerce')
                     # Calculate PREVCLOSE using Points Change
@@ -289,4 +313,13 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
         
     final_df = pd.concat(all_data, ignore_index=True)
     final_df = final_df.drop_duplicates(subset=['SYMBOL', 'INSTRUMENT_TYPE', 'DATE'])
+    
+    # Calculate PREVCLOSE using shift(1) for any NaNs
+    final_df = final_df.sort_values(by=['SYMBOL', 'DATE'])
+    final_df['PREVCLOSE'] = final_df['PREVCLOSE'].fillna(final_df.groupby('SYMBOL')['CLOSE'].shift(1))
+    
+    # Drop any extra dates that were fetched solely for PREVCLOSE calculation
+    requested_dates_dt = pd.to_datetime(list(original_dates))
+    final_df = final_df[final_df['DATE'].isin(requested_dates_dt)].copy()
+    
     return final_df
