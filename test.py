@@ -9,7 +9,7 @@ def test_screener():
     while d.weekday() > 4:
         d -= timedelta(days=1)
         
-    dates = [d]
+    dates = [date(2024, 5, 29), date(2026, 5, 29)]
     print(f"Fetching data for {dates}")
     df = fetch_data_for_dates(dates, market="Both")
     if df.empty:
