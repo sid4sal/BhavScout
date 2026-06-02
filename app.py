@@ -75,8 +75,6 @@ with st.expander("⚙️ Filters & Settings", expanded=True):
         help="Filter by AMFI market cap classification. Large Cap = Top 100, Mid Cap = 101-250, Small Cap = 251+ by full market capitalization."
     )
     
-    sme_only = st.checkbox("Show only SME stocks", value=False, help="Filter to show only SME/Emerge platform stocks. These have T+2 settlement and minimum lot sizes.")
-    
     st.markdown("---")
     st.subheader("Sort & Display")
     
@@ -126,8 +124,7 @@ if run_screener:
                 final_df = filter_by_category(
                     df=final_df,
                     categories=stock_category,
-                    market_caps=market_cap_filter,
-                    sme_only=sme_only
+                    market_caps=market_cap_filter
                 )
                 
                 if final_df.empty:
@@ -152,17 +149,15 @@ if run_screener:
                         # Category legend
                         st.markdown("---")
                         st.markdown("**📋 Category Legend:**")
-                        legend_cols = st.columns(5)
+                        legend_cols = st.columns(4)
                         with legend_cols[0]:
                             st.markdown("🟢 **Normal** — Standard equity, intraday allowed")
                         with legend_cols[1]:
-                            st.markdown("🔒 **T2T** — Trade-to-Trade, delivery only")
+                            st.markdown("🔒 **T2T** — Trade-to-Trade, delivery only (No Intraday). T2T impose a T+1 Settlement restriction and disables Buy Today, Sell Tomorrow (BTST). Which means the stock can only be sold on/after T+1 day, depending on the exact settlement time.")
                         with legend_cols[2]:
-                            st.markdown("🏢 **SME** — SME/Emerge platform, T+2 settlement")
+                            st.markdown("🏢 **SME** — SME/Emerge platform, T+2 settlement. These have a minimum lot size. Can be sold on/after T+2, depending on the exact settlement time.")
                         with legend_cols[3]:
                             st.markdown("⚠️ **Non-compliant** — SEBI non-compliant")
-                        with legend_cols[4]:
-                            st.markdown("📊 **Market Cap** — Per AMFI (Large/Mid/Small)")
                     
                     # Format output for better display
                     display_df = final_df.copy()
@@ -205,5 +200,11 @@ if run_screener:
                         display_df['SETTLEMENT'] = display_df['SETTLEMENT'].apply(
                             lambda x: f"{settle_emoji.get(x, '')} {x}"
                         )
+                    # Reorder columns for display
+                    cols = display_df.columns.tolist()
+                    front_cols = ['SYMBOL', 'INSTRUMENT_TYPE', 'CATEGORY', 'SETTLEMENT', 'TURNOVER (Cr)']
+                    front_cols = [c for c in front_cols if c in cols]
+                    remaining_cols = [c for c in cols if c not in front_cols]
+                    display_df = display_df[front_cols + remaining_cols]
                     
                     st.dataframe(display_df, use_container_width=True, hide_index=True)

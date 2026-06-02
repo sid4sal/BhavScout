@@ -127,7 +127,7 @@ def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_incr
     return latest_df
 
 
-def filter_by_category(df: pd.DataFrame, categories: list[str] = None, market_caps: list[str] = None, sme_only: bool = False) -> pd.DataFrame:
+def filter_by_category(df: pd.DataFrame, categories: list[str] = None, market_caps: list[str] = None) -> pd.DataFrame:
     """
     Filter stocks by category, market cap, and SME status.
     Applied after classification columns are added.
@@ -138,7 +138,6 @@ def filter_by_category(df: pd.DataFrame, categories: list[str] = None, market_ca
                    If None or contains 'All', no category filtering is applied.
         market_caps: List of market caps to include, e.g. ['Large Cap', 'Mid Cap'].
                     If None or contains 'All', no market cap filtering is applied.
-        sme_only: If True, only show SME stocks.
     
     Returns:
         Filtered DataFrame.
@@ -165,8 +164,5 @@ def filter_by_category(df: pd.DataFrame, categories: list[str] = None, market_ca
     
     if market_caps and 'All' not in market_caps and 'MARKET_CAP' in df.columns:
         df = df[df['MARKET_CAP'].isin(market_caps)]
-    
-    if sme_only and 'IS_SME' in df.columns:
-        df = df[df['IS_SME'] == True]
     
     return df
