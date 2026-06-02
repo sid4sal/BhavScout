@@ -111,6 +111,9 @@ def download_bse_bhavcopy(dt: date) -> str:
     try:
         resp = requests.get(url, headers=get_headers())
         if resp.status_code == 200:
+            if b'<!DOCTYPE html>' in resp.content[:200].upper() or b'<HTML' in resp.content[:200].upper():
+                logger.warning(f"BSE CM bhavcopy for {dt} returned HTML (likely not available yet).")
+                return None
             with open(filename, 'wb') as f:
                 f.write(resp.content)
             return filename
@@ -127,6 +130,9 @@ def download_bse_fo_bhavcopy(dt: date) -> str:
     try:
         resp = requests.get(url, headers=get_headers())
         if resp.status_code == 200:
+            if b'<!DOCTYPE html>' in resp.content[:200].upper() or b'<HTML' in resp.content[:200].upper():
+                logger.warning(f"BSE FO bhavcopy for {dt} returned HTML (likely not available yet).")
+                return None
             with open(filename, 'wb') as f:
                 f.write(resp.content)
             return filename
@@ -176,21 +182,24 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                     if 'TckrSymb' in df_eq.columns:
                         df_eq['SERIES'] = df_eq['SctySrs'].str.strip()
                         df_eq['SYMBOL'] = df_eq['TckrSymb'].str.strip()
-                        df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE'])]
+                        df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE', 'SM', 'ST', 'BZ'])]
                         df_eq['INSTRUMENT_TYPE'] = df_eq['SYMBOL'].apply(classify_equity)
                         df_eq['DATE'] = pd.to_datetime(df_eq['TradDt'])
+                        df_eq['ISIN'] = df_eq['ISIN'].str.strip() if 'ISIN' in df_eq.columns else ''
                         df_eq = df_eq.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
                     else:
                         df_eq['SERIES'] = df_eq['SERIES'].str.strip()
                         df_eq['SYMBOL'] = df_eq['SYMBOL'].str.strip()
-                        df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE'])]
+                        df_eq = df_eq[df_eq['SERIES'].isin(['EQ', 'BE', 'SM', 'ST', 'BZ'])]
                         df_eq['INSTRUMENT_TYPE'] = df_eq['SYMBOL'].apply(classify_equity)
                         df_eq['DATE'] = pd.to_datetime(df_eq['TIMESTAMP'] if 'TIMESTAMP' in df_eq.columns else (df_eq['DATE1'] if 'DATE1' in df_eq.columns else dt))
+                        df_eq['ISIN'] = df_eq['ISIN_NUMBER'].str.strip() if 'ISIN_NUMBER' in df_eq.columns else (df_eq['ISIN'].str.strip() if 'ISIN' in df_eq.columns else '')
                         df_eq = df_eq.rename(columns={'OPEN_PRICE': 'OPEN', 'HIGH_PRICE': 'HIGH', 'LOW_PRICE': 'LOW', 'CLOSE_PRICE': 'CLOSE', 'PREV_CLOSE': 'PREVCLOSE', 'TOTTRDQTY': 'VOLUME', 'TTL_TRD_QNTY': 'VOLUME', 'TOTTRDVAL': 'TURNOVER', 'TURNOVER_LACS': 'TURNOVER'})
                         if 'TURNOVER' in df_eq.columns and df_eq['TURNOVER'].mean() < 1e7:
                             df_eq['TURNOVER'] = df_eq['TURNOVER'] * 100000
+                    df_eq['EXCHANGE'] = 'NSE'
                     df_eq['SYMBOL'] = df_eq['SYMBOL'] + ' (NSE)'
-                    df_eq = df_eq[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    df_eq = df_eq[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_eq)
                 except Exception as e:
                     logger.error(f"Error parsing NSE eq file {eq_file}: {e}")
@@ -214,8 +223,11 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                         df_fo = df_fo.rename(columns={'CONTRACTS': 'VOLUME', 'VAL_INLAKH': 'TURNOVER'})
                         if 'TURNOVER' in df_fo.columns:
                             df_fo['TURNOVER'] = df_fo['TURNOVER'] * 100000
+                    df_fo['ISIN'] = ''
+                    df_fo['SERIES'] = 'FO'
+                    df_fo['EXCHANGE'] = 'NSE'
                     df_fo['SYMBOL'] = df_fo['SYMBOL'] + ' (NSE)'
-                    df_fo = df_fo[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    df_fo = df_fo[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_fo)
                 except Exception as e:
                     logger.error(f"Error parsing NSE fo file {fo_file}: {e}")
@@ -246,8 +258,11 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                     else:
                         df_idx['PREVCLOSE'] = float('nan')
                     
+                    df_idx['ISIN'] = ''
+                    df_idx['SERIES'] = 'IDX'
+                    df_idx['EXCHANGE'] = 'NSE'
                     df_idx['SYMBOL'] = df_idx['SYMBOL'] + ' (NSE)'
-                    df_idx = df_idx[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    df_idx = df_idx[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_idx)
                 except Exception as e:
                     logger.error(f"Error parsing NSE index file {idx_file}: {e}")
@@ -262,11 +277,16 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                     if 'TckrSymb' in df_bse.columns:
                         df_bse['SERIES'] = df_bse['SctySrs'].str.strip()
                         df_bse['SYMBOL'] = df_bse['TckrSymb'].str.strip()
+                        # Filter BSE series: include A, B, T, XT, X, M, MT, MS, E, F, G, IF, R, P
+                        # Exclude Z (Suspended), ZP (Suspended)
+                        df_bse = df_bse[~df_bse['SERIES'].isin(['Z', 'ZP'])]
                         df_bse['INSTRUMENT_TYPE'] = df_bse['SYMBOL'].apply(classify_equity)
                         df_bse['DATE'] = pd.to_datetime(df_bse['TradDt'])
+                        df_bse['ISIN'] = df_bse['ISIN'].str.strip() if 'ISIN' in df_bse.columns else ''
                         df_bse = df_bse.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
+                        df_bse['EXCHANGE'] = 'BSE'
                         df_bse['SYMBOL'] = df_bse['SYMBOL'] + ' (BSE)'
-                        df_bse = df_bse[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                        df_bse = df_bse[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                         all_data.append(df_bse)
                 except Exception as e:
                     logger.error(f"Error parsing BSE eq file {bse_file}: {e}")
@@ -282,8 +302,11 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                         df_bse_fo['SYMBOL'] = df_bse_fo['TckrSymb'].astype(str) + '_' + df_bse_fo['FinInstrmTp'].astype(str) + '_' + df_bse_fo['XpryDt'].astype(str)
                         df_bse_fo['DATE'] = pd.to_datetime(df_bse_fo['TradDt'])
                         df_bse_fo = df_bse_fo.rename(columns={'OpnPric': 'OPEN', 'HghPric': 'HIGH', 'LwPric': 'LOW', 'ClsPric': 'CLOSE', 'PrvsClsgPric': 'PREVCLOSE', 'TtlTradgVol': 'VOLUME', 'TtlTrfVal': 'TURNOVER'})
+                        df_bse_fo['ISIN'] = ''
+                        df_bse_fo['SERIES'] = 'FO'
+                        df_bse_fo['EXCHANGE'] = 'BSE'
                         df_bse_fo['SYMBOL'] = df_bse_fo['SYMBOL'] + ' (BSE)'
-                        df_bse_fo = df_bse_fo[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                        df_bse_fo = df_bse_fo[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                         all_data.append(df_bse_fo)
                 except Exception as e:
                     logger.error(f"Error parsing BSE fo file {bse_fo_file}: {e}")
@@ -302,8 +325,11 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                     })
                     df_bse_idx['VOLUME'] = 0.0
                     df_bse_idx['TURNOVER'] = 0.0
+                    df_bse_idx['ISIN'] = ''
+                    df_bse_idx['SERIES'] = 'IDX'
+                    df_bse_idx['EXCHANGE'] = 'BSE'
                     df_bse_idx['SYMBOL'] = df_bse_idx['SYMBOL'] + ' (BSE)'
-                    df_bse_idx = df_bse_idx[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
+                    df_bse_idx = df_bse_idx[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
                     all_data.append(df_bse_idx)
                 except Exception as e:
                     logger.error(f"Error parsing BSE index file {bse_idx_file}: {e}")

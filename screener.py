@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from stock_classifier import add_classifications, load_market_cap_data
 
 def calculate_percentage_change(df: pd.DataFrame, method: str) -> pd.DataFrame:
     """
@@ -34,6 +35,10 @@ def calculate_percentage_change(df: pd.DataFrame, method: str) -> pd.DataFrame:
         df['BASE_PRICE'] = df['PREVCLOSE']
         df['CURRENT_PRICE'] = df['CLOSE']
     
+    # Ensure columns are numeric to prevent comparison errors
+    df['BASE_PRICE'] = pd.to_numeric(df['BASE_PRICE'], errors='coerce')
+    df['CURRENT_PRICE'] = pd.to_numeric(df['CURRENT_PRICE'], errors='coerce')
+
     # Calculate % change
     df['PCT_CHANGE'] = np.where(
         df['BASE_PRICE'] > 0,
@@ -83,9 +88,9 @@ def apply_filters(df: pd.DataFrame,
     
     return df
 
-def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_increase: bool = True) -> pd.DataFrame:
+def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_increase: bool = True, mcap_data: dict = None) -> pd.DataFrame:
     """
-    Extracts the latest data for each valid symbol and sorts it.
+    Extracts the latest data for each valid symbol, adds classification columns, and sorts it.
     """
     if df.empty:
         return df
@@ -93,6 +98,10 @@ def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_incr
     # Get the latest date for each symbol
     idx = df.groupby('SYMBOL')['DATE'].idxmax()
     latest_df = df.loc[idx].copy()
+    
+    # Add classification columns (CATEGORY, SETTLEMENT, RESTRICTIONS, IS_SME, MARKET_CAP)
+    if 'SERIES' in latest_df.columns and 'EXCHANGE' in latest_df.columns:
+        latest_df = add_classifications(latest_df, mcap_data)
     
     # Sort
     if sort_by == "% Change":
@@ -109,7 +118,55 @@ def get_latest_data_and_sort(df: pd.DataFrame, sort_by: str, top_n: int, is_incr
     if top_n > 0:
         latest_df = latest_df.head(top_n)
         
-    # Formatting
-    latest_df = latest_df[['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER', 'PCT_CHANGE', 'MET_PCT']]
+    # Build output columns — include classification columns if present
+    base_cols = ['SYMBOL', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER', 'PCT_CHANGE', 'MET_PCT']
+    classification_cols = ['CATEGORY', 'SETTLEMENT', 'RESTRICTIONS', 'IS_SME', 'MARKET_CAP']
+    output_cols = base_cols + [c for c in classification_cols if c in latest_df.columns]
+    latest_df = latest_df[output_cols]
     
     return latest_df
+
+
+def filter_by_category(df: pd.DataFrame, categories: list[str] = None, market_caps: list[str] = None, sme_only: bool = False) -> pd.DataFrame:
+    """
+    Filter stocks by category, market cap, and SME status.
+    Applied after classification columns are added.
+    
+    Args:
+        df: DataFrame with classification columns.
+        categories: List of categories to include, e.g. ['Normal', 'T2T', 'SME'].
+                   If None or contains 'All', no category filtering is applied.
+        market_caps: List of market caps to include, e.g. ['Large Cap', 'Mid Cap'].
+                    If None or contains 'All', no market cap filtering is applied.
+        sme_only: If True, only show SME stocks.
+    
+    Returns:
+        Filtered DataFrame.
+    """
+    if df.empty:
+        return df
+    
+    df = df.copy()
+    
+    if categories and 'All' not in categories and 'CATEGORY' in df.columns:
+        # Map user-friendly filter names to internal category values
+        cat_map = {
+            'Normal': ['Normal'],
+            'T2T': ['T2T'],
+            'SME': ['SME', 'SME (T2T)', 'SME (Odd Lot)'],
+            'Non-compliant': ['Non-compliant'],
+            'Suspended': ['Suspended'],
+            'Other': ['Other', 'Block Deal', 'Book Transfer', 'Illiquid', 'Institutional'],
+        }
+        allowed = []
+        for cat in categories:
+            allowed.extend(cat_map.get(cat, [cat]))
+        df = df[df['CATEGORY'].isin(allowed)]
+    
+    if market_caps and 'All' not in market_caps and 'MARKET_CAP' in df.columns:
+        df = df[df['MARKET_CAP'].isin(market_caps)]
+    
+    if sme_only and 'IS_SME' in df.columns:
+        df = df[df['IS_SME'] == True]
+    
+    return df
