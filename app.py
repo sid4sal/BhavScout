@@ -83,128 +83,151 @@ with st.expander("⚙️ Filters & Settings", expanded=True):
     
     run_screener = st.button("Run Screener", type="primary")
 
+if 'has_run' not in st.session_state:
+    st.session_state.has_run = False
+
 if run_screener:
-    if not dates_to_fetch:
+    if pct_cutoff > max_pct_cutoff:
+        st.error("Min % Change cannot be greater than Max % Change.")
+    elif calc_method == "High - Low" and direction_ui == "Down":
+        st.error("The 'High - Low' calculation always yields a positive percentage. Selecting 'Down' direction will yield zero results. Please change the direction to 'Up' or choose a different calculation method.")
+    elif not dates_to_fetch:
         st.error("Please select a valid date range.")
     else:
-        with st.spinner("Fetching data and applying filters... This may take a moment if downloading fresh data."):
+        with st.spinner("Fetching data... This may take a moment if downloading fresh data."):
             # 0. Load market cap data (cached)
-            mcap_data = load_market_cap_data()
+            st.session_state.mcap_data = load_market_cap_data()
             
             # 1. Fetch Data
-            df = fetch_data_for_dates(dates_to_fetch, markets=market)
+            st.session_state.raw_df = fetch_data_for_dates(dates_to_fetch, markets=market)
+            st.session_state.fetched_dates = dates_to_fetch.copy()
+            st.session_state.fetched_markets = market.copy()
+            st.session_state.has_run = True
+
+if st.session_state.has_run:
+    if st.session_state.fetched_dates != dates_to_fetch or st.session_state.fetched_markets != market:
+        st.info("📅 Date or Market selection has changed. Please click 'Run Screener' to fetch new data.")
+    else:
+        df = st.session_state.raw_df.copy()
+        mcap_data = st.session_state.mcap_data
+        
+        if df.empty:
+            st.warning("No data found for the selected dates. Please try different dates (weekends/holidays have no data).")
+        else:
+            # 2. Calculate Percentage Changes
+            df = calculate_percentage_change(df, calc_method)
             
-            if df.empty:
-                st.warning("No data found for the selected dates. Please try different dates (weekends/holidays have no data).")
+            # Check for missing base prices
+            invalid_symbols = df[df['PCT_CHANGE'].isna()]['SYMBOL'].nunique()
+            
+            # 3. Apply Filters
+            filtered_df = apply_filters(
+                df=df,
+                instruments=instrument,
+                min_liquidity=min_liquidity,
+                pct_cutoff=pct_cutoff,
+                max_pct_cutoff=max_pct_cutoff,
+                is_increase=is_increase,
+                min_days_pct=min_days_pct
+            )
+            
+            # 4. Get Latest Data, Add Classifications & Sort
+            final_df = get_latest_data_and_sort(
+                df=filtered_df,
+                sort_by=sort_by,
+                top_n=top_n,
+                is_increase=is_increase,
+                mcap_data=mcap_data
+            )
+            
+            # 5. Apply Category & Market Cap Filters
+            final_df = filter_by_category(
+                df=final_df,
+                categories=stock_category,
+                market_caps=market_cap_filter
+            )
+            
+            if invalid_symbols > 0:
+                st.warning(f"⚠️ Note: {invalid_symbols} stocks were excluded due to missing baseline price data.")
+            
+            if final_df.empty:
+                st.info("No stocks matched your criteria.")
             else:
-                # 2. Calculate Percentage Changes
-                df = calculate_percentage_change(df, calc_method)
+                st.success(f"Found {len(final_df)} matching stocks.")
                 
-                # 3. Apply Filters
-                filtered_df = apply_filters(
-                    df=df,
-                    instruments=instrument,
-                    min_liquidity=min_liquidity,
-                    pct_cutoff=pct_cutoff,
-                    max_pct_cutoff=max_pct_cutoff,
-                    is_increase=is_increase,
-                    min_days_pct=min_days_pct
-                )
+                # Extract dates for summary
+                evaluated_dates = df['DATE'].dt.strftime('%Y-%m-%d').unique().tolist()
+                evaluated_dates.sort()
+                requested_dates = [d.strftime('%Y-%m-%d') for d in st.session_state.fetched_dates]
+                skipped_dates = list(set(requested_dates) - set(evaluated_dates))
                 
-                # 4. Get Latest Data, Add Classifications & Sort
-                final_df = get_latest_data_and_sort(
-                    df=filtered_df,
-                    sort_by=sort_by,
-                    top_n=top_n,
-                    is_increase=is_increase,
-                    mcap_data=mcap_data
-                )
+                with st.expander("📊 Scan Summary", expanded=True):
+                    st.markdown(f"**Dates Requested:** {len(requested_dates)} days")
+                    st.markdown(f"**Trading Days Evaluated:** {len(evaluated_dates)} days ({', '.join(evaluated_dates)})")
+                    if skipped_dates:
+                        st.markdown(f"**Skipped (Holidays/No Data):** {len(skipped_dates)} days ({', '.join(skipped_dates)})")
+                    st.markdown(f"**Filter:** {direction_ui} {pct_cutoff}% to {max_pct_cutoff}% | Consistency: {min_days_pct}% | Turnover >= ₹{min_liquidity/10000000}Cr")
+                    st.markdown(f"**Sorted By:** {sort_by} (Top {'All' if top_n == 0 else top_n})")
+                    
+                    # Category legend
+                    st.markdown("---")
+                    st.markdown("**📋 Category Legend:**")
+                    legend_cols = st.columns(4)
+                    with legend_cols[0]:
+                        st.markdown("🟢 **Normal** — Standard equity, intraday allowed")
+                    with legend_cols[1]:
+                        st.markdown("🔒 **T2T** — Trade-to-Trade, delivery only (No Intraday). T2T impose a T+1 Settlement restriction and disables Buy Today, Sell Tomorrow (BTST). Which means the stock can only be sold on/after T+1 day, depending on the exact settlement time.")
+                    with legend_cols[2]:
+                        st.markdown("🏢 **SME** — SME/Emerge platform, T+2 settlement. These have a minimum lot size. Can be sold on/after T+2, depending on the exact settlement time.")
+                    with legend_cols[3]:
+                        st.markdown("⚠️ **Non-compliant** — SEBI non-compliant")
                 
-                # 5. Apply Category & Market Cap Filters
-                final_df = filter_by_category(
-                    df=final_df,
-                    categories=stock_category,
-                    market_caps=market_cap_filter
-                )
+                # Format output for better display
+                display_df = final_df.copy()
+                display_df['DATE'] = display_df['DATE'].dt.strftime('%Y-%m-%d')
+                display_df['PCT_CHANGE'] = display_df['PCT_CHANGE'].round(2).astype(str) + '%'
+                display_df['MET_PCT'] = display_df['MET_PCT'].round(0).astype(str) + '%'
+                # Format turnover to Crores for readability
+                display_df['TURNOVER (Cr)'] = (display_df['TURNOVER'] / 10000000).round(2)
+                display_df = display_df.drop(columns=['TURNOVER'])
                 
-                if final_df.empty:
-                    st.info("No stocks matched your criteria.")
-                else:
-                    st.success(f"Found {len(final_df)} matching stocks.")
-                    
-                    # Extract dates for summary
-                    evaluated_dates = df['DATE'].dt.strftime('%Y-%m-%d').unique().tolist()
-                    evaluated_dates.sort()
-                    requested_dates = [d.strftime('%Y-%m-%d') for d in dates_to_fetch]
-                    skipped_dates = list(set(requested_dates) - set(evaluated_dates))
-                    
-                    with st.expander("📊 Scan Summary", expanded=True):
-                        st.markdown(f"**Dates Requested:** {len(requested_dates)} days")
-                        st.markdown(f"**Trading Days Evaluated:** {len(evaluated_dates)} days ({', '.join(evaluated_dates)})")
-                        if skipped_dates:
-                            st.markdown(f"**Skipped (Holidays/No Data):** {len(skipped_dates)} days ({', '.join(skipped_dates)})")
-                        st.markdown(f"**Filter:** {direction_ui} {pct_cutoff}% to {max_pct_cutoff}% | Consistency: {min_days_pct}% | Turnover >= ₹{min_liquidity/10000000}Cr")
-                        st.markdown(f"**Sorted By:** {sort_by} (Top {'All' if top_n == 0 else top_n})")
-                        
-                        # Category legend
-                        st.markdown("---")
-                        st.markdown("**📋 Category Legend:**")
-                        legend_cols = st.columns(4)
-                        with legend_cols[0]:
-                            st.markdown("🟢 **Normal** — Standard equity, intraday allowed")
-                        with legend_cols[1]:
-                            st.markdown("🔒 **T2T** — Trade-to-Trade, delivery only (No Intraday). T2T impose a T+1 Settlement restriction and disables Buy Today, Sell Tomorrow (BTST). Which means the stock can only be sold on/after T+1 day, depending on the exact settlement time.")
-                        with legend_cols[2]:
-                            st.markdown("🏢 **SME** — SME/Emerge platform, T+2 settlement. These have a minimum lot size. Can be sold on/after T+2, depending on the exact settlement time.")
-                        with legend_cols[3]:
-                            st.markdown("⚠️ **Non-compliant** — SEBI non-compliant")
-                    
-                    # Format output for better display
-                    display_df = final_df.copy()
-                    display_df['DATE'] = display_df['DATE'].dt.strftime('%Y-%m-%d')
-                    display_df['PCT_CHANGE'] = display_df['PCT_CHANGE'].round(2).astype(str) + '%'
-                    display_df['MET_PCT'] = display_df['MET_PCT'].round(0).astype(str) + '%'
-                    # Format turnover to Crores for readability
-                    display_df['TURNOVER (Cr)'] = (display_df['TURNOVER'] / 10000000).round(2)
-                    display_df = display_df.drop(columns=['TURNOVER'])
-                    
-                    # Format IS_SME as emoji
-                    if 'IS_SME' in display_df.columns:
-                        display_df['IS_SME'] = display_df['IS_SME'].apply(lambda x: '✅' if x else '—')
-                    
-                    # Add category emoji prefix for visual clarity
-                    if 'CATEGORY' in display_df.columns:
-                        cat_emoji = {
-                            'Normal': '🟢',
-                            'T2T': '🔒',
-                            'SME': '🏢',
-                            'SME (T2T)': '🏢🔒',
-                            'SME (Odd Lot)': '🏢',
-                            'Non-compliant': '⚠️',
-                            'Suspended': '🚫',
-                            'Other': '⚪',
-                        }
-                        display_df['CATEGORY'] = display_df['CATEGORY'].apply(
-                            lambda x: f"{cat_emoji.get(x, '⚪')} {x}"
-                        )
-                    
-                    # Add settlement emoji
-                    if 'SETTLEMENT' in display_df.columns:
-                        settle_emoji = {
-                            'T+1': '✅',
-                            'T+1 (T2T)': '🔒',
-                            'T+2': '⏳',
-                            'T+2 (T2T)': '⏳🔒',
-                            'N/A': '🚫',
-                        }
-                        display_df['SETTLEMENT'] = display_df['SETTLEMENT'].apply(
-                            lambda x: f"{settle_emoji.get(x, '')} {x}"
-                        )
-                    # Reorder columns for display
-                    cols = display_df.columns.tolist()
-                    front_cols = ['SYMBOL', 'INSTRUMENT_TYPE', 'CATEGORY', 'SETTLEMENT', 'TURNOVER (Cr)']
-                    front_cols = [c for c in front_cols if c in cols]
-                    remaining_cols = [c for c in cols if c not in front_cols]
-                    display_df = display_df[front_cols + remaining_cols]
-                    
-                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                # Format IS_SME as emoji
+                if 'IS_SME' in display_df.columns:
+                    display_df['IS_SME'] = display_df['IS_SME'].apply(lambda x: '✅' if x else '—')
+                
+                # Add category emoji prefix for visual clarity
+                if 'CATEGORY' in display_df.columns:
+                    cat_emoji = {
+                        'Normal': '🟢',
+                        'T2T': '🔒',
+                        'SME': '🏢',
+                        'SME (T2T)': '🏢🔒',
+                        'SME (Odd Lot)': '🏢',
+                        'Non-compliant': '⚠️',
+                        'Suspended': '🚫',
+                        'Other': '⚪',
+                    }
+                    display_df['CATEGORY'] = display_df['CATEGORY'].apply(
+                        lambda x: f"{cat_emoji.get(x, '⚪')} {x}"
+                    )
+                
+                # Add settlement emoji
+                if 'SETTLEMENT' in display_df.columns:
+                    settle_emoji = {
+                        'T+1': '✅',
+                        'T+1 (T2T)': '🔒',
+                        'T+2': '⏳',
+                        'T+2 (T2T)': '⏳🔒',
+                        'N/A': '🚫',
+                    }
+                    display_df['SETTLEMENT'] = display_df['SETTLEMENT'].apply(
+                        lambda x: f"{settle_emoji.get(x, '')} {x}"
+                    )
+                # Reorder columns for display
+                cols = display_df.columns.tolist()
+                front_cols = ['SYMBOL', 'INSTRUMENT_TYPE', 'CATEGORY', 'SETTLEMENT', 'TURNOVER (Cr)']
+                front_cols = [c for c in front_cols if c in cols]
+                remaining_cols = [c for c in cols if c not in front_cols]
+                display_df = display_df[front_cols + remaining_cols]
+                
+                st.dataframe(display_df, use_container_width=True, hide_index=True)

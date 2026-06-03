@@ -61,9 +61,18 @@ def apply_filters(df: pd.DataFrame,
     if df.empty:
         return df
 
+    df = df.copy()
+
+    # Calculate total dates available per exchange before filtering instruments
+    if 'EXCHANGE' in df.columns:
+        exchange_days = df.groupby('EXCHANGE')['DATE'].nunique()
+    else:
+        # Fallback if EXCHANGE is not present for some reason
+        exchange_days = {None: df['DATE'].nunique()}
+
     # 1. Filter by Instrument
     if "All" not in instruments and len(instruments) > 0:
-        df = df[df['INSTRUMENT_TYPE'].isin(instruments)].copy()
+        df = df[df['INSTRUMENT_TYPE'].isin(instruments)]
 
     # 2. Calculate % change condition
     if is_increase:
@@ -78,7 +87,11 @@ def apply_filters(df: pd.DataFrame,
     # 4. Aggregation for "% of days" rule
     # We want to find symbols that meet the condition for at least `min_days_pct` of the TOTAL evaluated days.
     # If an illiquid stock didn't trade on some days, those missing days count as non-passing days.
-    total_days = df['DATE'].nunique()
+    if 'EXCHANGE' in df.columns:
+        total_days = df['EXCHANGE'].map(exchange_days)
+    else:
+        total_days = exchange_days[None]
+        
     met_days = df.groupby('SYMBOL')['CONDITION_MET'].transform('sum')
     
     df['MET_PCT'] = (met_days / total_days) * 100

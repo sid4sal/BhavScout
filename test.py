@@ -4,12 +4,18 @@ from data_fetcher import fetch_data_for_dates
 from screener import calculate_percentage_change, apply_filters, get_latest_data_and_sort
 
 def test_screener():
-    # Use last Friday to be safe (if weekend)
     d = date.today() - timedelta(days=2) 
     while d.weekday() > 4:
         d -= timedelta(days=1)
         
-    dates = [date(2024, 5, 29), date(2026, 5, 29)]
+    dates = []
+    curr = d
+    while len(dates) < 5:
+        if curr.weekday() < 5:
+            dates.append(curr)
+        curr -= timedelta(days=1)
+    
+    dates.reverse()
     print(f"Fetching data for {dates}")
     df = fetch_data_for_dates(dates, markets=["NSE", "BSE"])
     if df.empty:

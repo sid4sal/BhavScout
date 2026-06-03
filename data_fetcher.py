@@ -17,10 +17,17 @@ def get_headers():
 
 def extract_zip(resp_content, filename):
     with zipfile.ZipFile(io.BytesIO(resp_content)) as zf:
-        csv_filename = zf.namelist()[0]
-        with zf.open(csv_filename) as f:
-            with open(filename, 'wb') as out_f:
-                out_f.write(f.read())
+        csv_filename = None
+        for name in zf.namelist():
+            if name.lower().endswith('.csv'):
+                csv_filename = name
+                break
+        if csv_filename:
+            with zf.open(csv_filename) as f:
+                with open(filename, 'wb') as out_f:
+                    out_f.write(f.read())
+        else:
+            logger.warning("No CSV file found in ZIP archive.")
 
 def download_nse_bhavcopy(dt: date) -> str:
     fmt = '%Y%m%d'
@@ -38,7 +45,7 @@ def download_nse_bhavcopy(dt: date) -> str:
         url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip"
 
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200 and resp.content[:2] == b'PK':
             extract_zip(resp.content, filename)
             return filename
@@ -62,7 +69,7 @@ def download_nse_fo_bhavcopy(dt: date) -> str:
         url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date_str}_F_0000.csv.zip"
 
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200 and resp.content[:2] == b'PK':
             extract_zip(resp.content, filename)
             return filename
@@ -77,7 +84,7 @@ def download_nse_indices(dt: date) -> str:
     
     url = f"https://nsearchives.nseindia.com/content/indices/ind_close_all_{ddmmyyyy}.csv"
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             with open(filename, 'wb') as f:
                 f.write(resp.content)
@@ -93,7 +100,7 @@ def download_bse_indices(dt: date) -> str:
     
     url = f"https://www.bseindia.com/bsedata/Index_Bhavcopy/INDEXSummary_{ddmmyyyy}.csv"
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             with open(filename, 'wb') as f:
                 f.write(resp.content)
@@ -109,7 +116,7 @@ def download_bse_bhavcopy(dt: date) -> str:
         
     url = f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date_str}_F_0000.CSV"
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             if b'<!DOCTYPE html>' in resp.content[:200].upper() or b'<HTML' in resp.content[:200].upper():
                 logger.warning(f"BSE CM bhavcopy for {dt} returned HTML (likely not available yet).")
@@ -128,7 +135,7 @@ def download_bse_fo_bhavcopy(dt: date) -> str:
     
     url = f"https://www.bseindia.com/download/BhavCopy/Derivative/BhavCopy_BSE_FO_0_0_0_{date_str}_F_0000.CSV"
     try:
-        resp = requests.get(url, headers=get_headers())
+        resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             if b'<!DOCTYPE html>' in resp.content[:200].upper() or b'<HTML' in resp.content[:200].upper():
                 logger.warning(f"BSE FO bhavcopy for {dt} returned HTML (likely not available yet).")
@@ -167,7 +174,7 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
         min_dt = min(dates)
         # If legacy NSE F&O could be involved, we need the prev day
         if min_dt < date(2024, 7, 8) and "NSE" in markets:
-            prev_dt = get_previous_trading_day(min_dt, markets)
+            prev_dt = get_previous_trading_day(min_dt, ["NSE"])
             if prev_dt not in dates:
                 dates = [prev_dt] + dates
 
@@ -195,8 +202,6 @@ def fetch_data_for_dates(dates: list[date], markets: list[str] = ["NSE"]) -> pd.
                         df_eq['DATE'] = pd.to_datetime(df_eq['TIMESTAMP'] if 'TIMESTAMP' in df_eq.columns else (df_eq['DATE1'] if 'DATE1' in df_eq.columns else dt))
                         df_eq['ISIN'] = df_eq['ISIN_NUMBER'].str.strip() if 'ISIN_NUMBER' in df_eq.columns else (df_eq['ISIN'].str.strip() if 'ISIN' in df_eq.columns else '')
                         df_eq = df_eq.rename(columns={'OPEN_PRICE': 'OPEN', 'HIGH_PRICE': 'HIGH', 'LOW_PRICE': 'LOW', 'CLOSE_PRICE': 'CLOSE', 'PREV_CLOSE': 'PREVCLOSE', 'TOTTRDQTY': 'VOLUME', 'TTL_TRD_QNTY': 'VOLUME', 'TOTTRDVAL': 'TURNOVER', 'TURNOVER_LACS': 'TURNOVER'})
-                        if 'TURNOVER' in df_eq.columns and df_eq['TURNOVER'].mean() < 1e7:
-                            df_eq['TURNOVER'] = df_eq['TURNOVER'] * 100000
                     df_eq['EXCHANGE'] = 'NSE'
                     df_eq['SYMBOL'] = df_eq['SYMBOL'] + ' (NSE)'
                     df_eq = df_eq[['SYMBOL', 'ISIN', 'SERIES', 'EXCHANGE', 'INSTRUMENT_TYPE', 'DATE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'PREVCLOSE', 'VOLUME', 'TURNOVER']]
